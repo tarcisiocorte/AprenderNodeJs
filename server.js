@@ -1,34 +1,56 @@
-var express = require('express');
+var express = require('express'),
+  stylus = require('stylus'),
+  logger = require('morgan'),
+  bodyParser = require('body-parser'),
+  mongoose = require('mongoose');
+
+var env = process.env.NODE_ENV = process.env.NODE_ENV || 'development';
+
 var app = express();
-var port = process.env.PORT || 8080;
 
-var cookieParser = require('cookie-parser');
-var session = require('express-session');
-var morgan = require('morgan');
-var mongoose = require('mongoose');
+function compile(str, path) {
+  return stylus(str).set('filename', path);
+}
 
-var configDB = require('./config/database.js');
-mongoose.connect(configDB.url);
+app.set('views', __dirname + '/server/views');
+app.set('view engine', 'jade');
+app.use(logger('dev'));
+app.use(bodyParser());
+app.use(stylus.middleware(
+  {
+    src: __dirname + '/public',
+    compile: compile
+  }
+));
+app.use(express.static(__dirname + '/public'));
 
-app.use(morgan('dev'));
-app.use(cookieParser());
-app.use(session({secret: 'anystringoftext',
-				 saveUninitialized: true,
-				 resave: true}));
+mongoose.connect('mongodb://localhost/multivision');
+var db = mongoose.connection;
+db.on('error', console.error.bind(console, 'connection error...'));
+db.once('open', function callback() {
+  console.log('multivision db opened');
+});
 
+var messageSchema = mongoose.Schema({message: String});
+var Message = mongoose.model('Message', messageSchema);
+var mongoMessage= new Message({message: 'Hello mongoDB here'});
+console.log(mongoMessage.message);
+mongoMessage.save(function(err, doc) {
+    Message.findOne().exec(function(err, messageDoc) {
+        mongoMessage = messageDoc.message;
+    });
+});
 
-// app.use('/', function(req, res){
-// 	res.send('Our First Express program!');
-// 	console.log(req.cookies);
-// 	console.log('================');
-// 	console.log(req.session);
-// });
+app.get('/partials/:partialPath', function(req, res) {
+    res.render('partials/' + req.params.partialPath);
+});
 
-require('./app/routes.js')(app);
+app.get('*', function(req, res) {
+  res.render('index', {
+    mongoMessage: mongoMessage
+  });
+});
 
+var port = 3030;
 app.listen(port);
-console.log('Server running on port: ' + port);
-
-
-
-
+console.log('Listening on port ' + port + '...');
